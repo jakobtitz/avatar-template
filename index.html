@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Beyond Presence Avatar</title>
+    <style>
+        body { margin: 0; background: #000; }
+        #avatar-container { width: 100vw; height: 100vh; }
+        #avatar-container video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain;
+        }
+        #status { 
+            position: fixed; 
+            top: 10px; 
+            left: 10px; 
+            color: #fff; 
+            font-family: monospace;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="avatar-container"></div>
+    <div id="status">Connecting...</div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.0.0/dist/livekit-client.umd.min.js"></script>
+    
+    <script>
+        const statusEl = document.getElementById('status');
+        
+        // Read agent_id from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const agentId = urlParams.get('agent_id');
+        
+        async function start() {
+            try {
+                // 1. Call our API route with agent_id from URL
+                statusEl.textContent = agentId 
+                    ? `Creating call for agent: ${agentId.substring(0, 8)}...`
+                    : 'Creating call (using default agent)...';
+                
+                const res = await fetch('/api/create-call', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        agent_id: agentId  // Will be null if not in URL, API uses env var fallback
+                    })
+                });
+                
+                if (!res.ok) {
+                    const error = await res.json();
+                    throw new Error(error.error || 'Failed to create call');
+                }
+                
+                const { livekit_url, livekit_token } = await res.json();
+                
+                // 2. Connect to LiveKit room
+                statusEl.textContent = 'Connecting to room...';
+                const room = new LivekitClient.Room();
+                
+                room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
+                    const el = track.attach();
+                    document.getElementById('avatar-container').appendChild(el);
+                });
+                
+                await room.connect(livekit_url, livekit_token);
+                
+                // 3. Enable microphone
+                statusEl.textContent = 'Enabling microphone...';
+                await room.localParticipant.setMicrophoneEnabled(true);
+                
+                statusEl.textContent = '✅ Connected';
+                setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
+                
+                console.log('✅ Connected and microphone enabled');
+                if (agentId) console.log('Using agent_id from URL:', agentId);
+            } catch (error) {
+                statusEl.textContent = '❌ Error: ' + error.message;
+                console.error('Error:', error);
+            }
+        }
+        
+        start();
+    </script>
+</body>
+</html>
