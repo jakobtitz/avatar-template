@@ -3,44 +3,73 @@
 <head>
     <title>Beyond Presence Avatar</title>
     <style>
-        body { margin: 0; background: #000; }
-        #avatar-container { width: 100vw; height: 100vh; }
+        body { 
+            margin: 0; 
+            background: url('./bg.png') center/cover no-repeat;
+            background-color: #4a6572;
+        }
+        #avatar-container { 
+            width: 100vw; 
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
         #avatar-container video { 
-            width: 100%; 
-            height: 100%; 
+            max-width: 100%; 
+            max-height: 100%; 
             object-fit: contain;
         }
-        #status { 
-            position: fixed; 
-            top: 10px; 
-            left: 10px; 
-            color: #fff; 
-            font-family: monospace;
-            background: rgba(0,0,0,0.7);
-            padding: 8px 12px;
-            border-radius: 4px;
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 24px;
+            text-align: center;
+        }
+        #loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #fff;
+            border-radius: 50%;
+            margin: 0 auto 16px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div id="avatar-container"></div>
-    <div id="status">Connecting...</div>
+    <div id="loading">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading...</div>
+    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.0.0/dist/livekit-client.umd.min.js"></script>
     
     <script>
-        const statusEl = document.getElementById('status');
-        
-        // Read agent_id from URL parameters
+        const loadingEl = document.getElementById('loading');
+        const loadingText = document.getElementById('loading-text');
         const urlParams = new URLSearchParams(window.location.search);
         const agentId = urlParams.get('agent_id');
         
+        function setStatus(text) {
+            loadingText.textContent = text;
+        }
+        
+        function hideLoading() {
+            loadingEl.style.display = 'none';
+        }
+        
         async function start() {
             try {
-                // 1. Call our API route with agent_id from URL
-                statusEl.textContent = agentId 
-                    ? `Creating call for agent: ${agentId.substring(0, 8)}...`
-                    : 'Creating call (using default agent)...';
+                setStatus('Initializing...');
                 
                 const res = await fetch('/api/create-call', {
                     method: 'POST',
@@ -48,7 +77,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({ 
-                        agent_id: agentId  // Will be null if not in URL, API uses env var fallback
+                        agent_id: agentId
                     })
                 });
                 
@@ -57,31 +86,34 @@
                     throw new Error(error.error || 'Failed to create call');
                 }
                 
+                setStatus('Processing...');
+                
                 const { livekit_url, livekit_token } = await res.json();
                 
-                // 2. Connect to LiveKit room
-                statusEl.textContent = 'Connecting to room...';
+                setStatus('Connecting...');
+                
                 const room = new LivekitClient.Room();
                 
                 room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
                     const el = track.attach();
                     document.getElementById('avatar-container').appendChild(el);
+                    
+                    if (track.kind === 'video') {
+                        hideLoading();
+                    }
                 });
                 
                 await room.connect(livekit_url, livekit_token);
                 
-                // 3. Enable microphone
-                statusEl.textContent = 'Enabling microphone...';
-                await room.localParticipant.setMicrophoneEnabled(true);
+                setStatus('Starting avatar...');
                 
-                statusEl.textContent = '✅ Connected';
-                setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
+                await room.localParticipant.setMicrophoneEnabled(true);
                 
                 console.log('✅ Connected and microphone enabled');
                 if (agentId) console.log('Using agent_id from URL:', agentId);
             } catch (error) {
-                statusEl.textContent = '❌ Error: ' + error.message;
                 console.error('Error:', error);
+                setStatus('Connection failed');
             }
         }
         
