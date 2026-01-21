@@ -10,57 +10,19 @@
             height: 100%; 
             object-fit: contain;
         }
-        #loading {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #fff;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 24px;
-            text-align: center;
-        }
-        #loading .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid rgba(255,255,255,0.2);
-            border-top-color: #fff;
-            border-radius: 50%;
-            margin: 0 auto 16px;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
     </style>
 </head>
 <body>
     <div id="avatar-container"></div>
-    <div id="loading">
-        <div class="spinner"></div>
-        <div id="loading-text">Loading...</div>
-    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.0.0/dist/livekit-client.umd.min.js"></script>
     
     <script>
-        const loadingEl = document.getElementById('loading');
-        const loadingText = document.getElementById('loading-text');
         const urlParams = new URLSearchParams(window.location.search);
         const agentId = urlParams.get('agent_id');
         
-        function setStatus(text) {
-            loadingText.textContent = text;
-        }
-        
-        function hideLoading() {
-            loadingEl.style.display = 'none';
-        }
-        
         async function start() {
             try {
-                setStatus('Initializing...');
-                
                 const res = await fetch('/api/create-call', {
                     method: 'POST',
                     headers: {
@@ -76,35 +38,22 @@
                     throw new Error(error.error || 'Failed to create call');
                 }
                 
-                setStatus('Processing...');
-                
                 const { livekit_url, livekit_token } = await res.json();
-                
-                setStatus('Connecting...');
                 
                 const room = new LivekitClient.Room();
                 
                 room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, pub, participant) => {
                     const el = track.attach();
                     document.getElementById('avatar-container').appendChild(el);
-                    
-                    // Hide loading when video track appears
-                    if (track.kind === 'video') {
-                        hideLoading();
-                    }
                 });
                 
                 await room.connect(livekit_url, livekit_token);
-                
-                setStatus('Starting avatar...');
-                
                 await room.localParticipant.setMicrophoneEnabled(true);
                 
                 console.log('✅ Connected and microphone enabled');
                 if (agentId) console.log('Using agent_id from URL:', agentId);
             } catch (error) {
                 console.error('Error:', error);
-                setStatus('Connection failed');
             }
         }
         
